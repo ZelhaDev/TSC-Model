@@ -1,0 +1,6 @@
+
+# Ignore downloaded datasets
+data/
+experiments/logs/
+experiments/results/
+
