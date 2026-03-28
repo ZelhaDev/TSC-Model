@@ -5,6 +5,10 @@
 
 echo "Starting reproducible training and evaluation pipeline..."
 
+# 0. Download datasets interactively
+echo ">> Downloading datasets from Kaggle..."
+python data/get_data.py
+
 # 1. Install dependencies
 echo ">> Installing dependencies..."
 pip install -r requirements.txt
