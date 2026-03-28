@@ -1,0 +1,63 @@
+# ============================================================
+# Traffic Sign Classifier — Training Configuration
+# ============================================================
+
+seed: 42
+
+# ---- Data ----
+data:
+  root: "data"                 # torchvision will download here
+  image_size: 32               # resize to 32x32
+  batch_size: 64
+  val_split: 0.2               # 80/20 stratified train/val
+  num_workers: 2
+
+# ---- CNN Model ----
+cnn:
+  num_classes: 43
+  dropout: 0.25
+
+# ---- Training ----
+training:
+  epochs: 15
+  learning_rate: 0.001
+  weight_decay: 1.0e-4
+  scheduler_step: 5
+  scheduler_gamma: 0.5
+  early_stopping_patience: 5
+
+# ---- SVM Baseline ----
+svm:
+  C: 10.0
+  kernel: "rbf"
+  max_samples: 10000           # cap for faster HOG extraction
+
+# ---- NLP ----
+nlp:
+  embedding_dim: 64
+  num_filters: 32
+  filter_sizes: [2, 3, 4]
+  dropout: 0.3
+  epochs: 30
+  learning_rate: 0.001
+
+# ---- RL Agent ----
+rl:
+  grid_size: 5
+  episodes: 500
+  max_steps: 50
+  alpha: 0.1                   # Q-learning rate
+  gamma: 0.95                  # discount
+  epsilon_start: 1.0
+  epsilon_end: 0.05
+  epsilon_decay: 0.995
+  goal_reward: 10.0
+  step_penalty: -0.2
+  sign_bonus: 2.0
+  sign_penalty: -5.0
+
+# ---- Paths ----
+paths:
+  logs: "experiments/logs"
+  results: "experiments/results"
+  checkpoints: "experiments/logs"
