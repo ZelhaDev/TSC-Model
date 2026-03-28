@@ -10,3 +10,4 @@ tqdm>=4.65
 pyyaml>=6.0
 gymnasium>=0.29
 scikit-image>=0.20
+kaggle>=1.6.17
