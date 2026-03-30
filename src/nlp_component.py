@@ -1,13 +1,16 @@
 """
-Traffic Sign Classifier — NLP Component (Scaffold / Prototype)
-===============================================================
-Demonstrates a TextCNN that classifies natural-language sign
-descriptions back to GTSRB class IDs.
+Traffic Sign Classifier — NLP Component (Enhanced)
+=====================================================
+TextCNN that classifies natural-language sign descriptions
+back to GTSRB class IDs — with full evaluation metrics,
+learning curves, confusion matrix, and inference support.
 
 Components:
   1. GTSRB_DESCRIPTIONS — mapping of 43 class IDs → sign descriptions
   2. TextCNN — a small 1-D convolution text classifier
-  3. Training loop on the synthetic sign-description dataset
+  3. Training loop with per-epoch logging
+  4. classify_description() — free-text inference for demos
+  5. Enhanced evaluation: per-class F1, confusion matrix, learning curves
 
 This satisfies the NLP + CNN cross-requirement.
 
@@ -22,7 +25,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import seaborn as sns
 from collections import Counter
+from sklearn.metrics import (accuracy_score, f1_score, confusion_matrix,
+                             classification_report)
 
 from data_pipeline import load_config
 
@@ -184,11 +193,11 @@ class TextCNN(nn.Module):
 
 
 # ==============================================================
-# Training
+# Training with full logging
 # ==============================================================
 
 def train_text_cnn(cfg):
-    """Train TextCNN and print metrics."""
+    """Train TextCNN with per-epoch logging, learning curves, and confusion matrix."""
     nlp_cfg = cfg.get("nlp", {})
     seed = cfg["seed"]
     random.seed(seed)
@@ -236,6 +245,12 @@ def train_text_cnn(cfg):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
+    # Training history
+    history = {
+        "train_loss": [], "train_acc": [],
+        "val_loss": [], "val_acc": [], "val_f1": []
+    }
+
     # Training loop
     for epoch in range(1, epochs + 1):
         model.train()
@@ -245,16 +260,29 @@ def train_text_cnn(cfg):
         loss.backward()
         optimizer.step()
 
+        # Evaluate
+        model.eval()
+        with torch.no_grad():
+            train_preds = logits.argmax(1)
+            train_acc = (train_preds == y_train).float().mean().item()
+
+            val_logits = model(X_val)
+            val_loss = criterion(val_logits, y_val).item()
+            val_preds = val_logits.argmax(1)
+            val_acc = (val_preds == y_val).float().mean().item()
+            val_f1 = f1_score(y_val.numpy(), val_preds.numpy(),
+                              average="macro", zero_division=0)
+
+        history["train_loss"].append(round(loss.item(), 4))
+        history["train_acc"].append(round(train_acc, 4))
+        history["val_loss"].append(round(val_loss, 4))
+        history["val_acc"].append(round(val_acc, 4))
+        history["val_f1"].append(round(val_f1, 4))
+
         if epoch % 5 == 0 or epoch == 1:
-            model.eval()
-            with torch.no_grad():
-                val_logits = model(X_val)
-                val_preds = val_logits.argmax(1)
-                val_acc = (val_preds == y_val).float().mean().item()
-                train_preds = logits.argmax(1)
-                train_acc = (train_preds == y_train).float().mean().item()
             print(f"  Epoch {epoch:3d}/{epochs}  loss={loss.item():.4f}  "
-                  f"train_acc={train_acc:.4f}  val_acc={val_acc:.4f}")
+                  f"train_acc={train_acc:.4f}  val_acc={val_acc:.4f}  "
+                  f"val_f1={val_f1:.4f}")
 
     # Final metrics
     model.eval()
@@ -263,22 +291,136 @@ def train_text_cnn(cfg):
         val_preds = val_logits.argmax(1).numpy()
         val_true = y_val.numpy()
 
-    from sklearn.metrics import accuracy_score, f1_score
     acc = accuracy_score(val_true, val_preds)
     f1 = f1_score(val_true, val_preds, average="macro", zero_division=0)
 
     print(f"\n  NLP Val Accuracy : {acc:.4f}")
     print(f"  NLP Val Macro-F1 : {f1:.4f}")
 
+    # Per-class report
+    # Only include classes that appear in the validation set
+    present_classes = sorted(set(val_true))
+    target_names = [GTSRB_DESCRIPTIONS.get(c, f"Class {c}")[:40]
+                    for c in present_classes]
+    report = classification_report(val_true, val_preds,
+                                   labels=present_classes,
+                                   target_names=target_names,
+                                   zero_division=0, output_dict=True)
+
     # Save metrics
-    log_path = os.path.join(cfg["paths"]["logs"], "nlp_metrics.json")
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    logs_dir = cfg["paths"]["logs"]
+    results_dir = cfg["paths"]["results"]
+    os.makedirs(logs_dir, exist_ok=True)
+    os.makedirs(results_dir, exist_ok=True)
+
+    metrics_data = {
+        "val_accuracy": round(acc, 4),
+        "val_macro_f1": round(f1, 4),
+        "history": history,
+    }
+    log_path = os.path.join(logs_dir, "nlp_metrics.json")
     with open(log_path, "w") as f:
-        json.dump({"val_accuracy": round(acc, 4),
-                   "val_macro_f1": round(f1, 4)}, f, indent=2)
+        json.dump(metrics_data, f, indent=2)
     print(f"  NLP metrics saved → {log_path}")
 
+    # --- Learning curves ---
+    plot_nlp_learning_curves(history, results_dir)
+
+    # --- Confusion matrix (grouped to top 20 classes for readability) ---
+    plot_nlp_confusion_matrix(val_true, val_preds, results_dir)
+
     return model, vocab
+
+
+def plot_nlp_learning_curves(history, results_dir):
+    """Plot TextCNN training curves."""
+    epochs = range(1, len(history["train_loss"]) + 1)
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+    axes[0].plot(epochs, history["train_loss"], "o-", label="Train Loss",
+                 markersize=3)
+    axes[0].plot(epochs, history["val_loss"], "s-", label="Val Loss",
+                 markersize=3)
+    axes[0].set_xlabel("Epoch")
+    axes[0].set_ylabel("Loss")
+    axes[0].set_title("NLP Loss Curves")
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+
+    axes[1].plot(epochs, history["train_acc"], "o-", label="Train Acc",
+                 markersize=3)
+    axes[1].plot(epochs, history["val_acc"], "s-", label="Val Acc",
+                 markersize=3)
+    axes[1].set_xlabel("Epoch")
+    axes[1].set_ylabel("Accuracy")
+    axes[1].set_title("NLP Accuracy Curves")
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+
+    axes[2].plot(epochs, history["val_f1"], "D-", color="green",
+                 label="Val Macro-F1", markersize=3)
+    axes[2].set_xlabel("Epoch")
+    axes[2].set_ylabel("Macro-F1")
+    axes[2].set_title("NLP Validation Macro-F1")
+    axes[2].legend()
+    axes[2].grid(True, alpha=0.3)
+
+    plt.suptitle("TextCNN Training Curves — Sign Descriptions", fontsize=14,
+                 y=1.02)
+    plt.tight_layout()
+    save_path = os.path.join(results_dir, "nlp_learning_curves.png")
+    fig.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  NLP learning curves saved → {save_path}")
+
+
+def plot_nlp_confusion_matrix(y_true, y_pred, results_dir):
+    """Plot NLP confusion matrix."""
+    cm = confusion_matrix(y_true, y_pred)
+    fig, ax = plt.subplots(figsize=(14, 12))
+    sns.heatmap(cm, cmap="Blues", ax=ax, fmt="d",
+                xticklabels=range(43), yticklabels=range(43))
+    ax.set_xlabel("Predicted Class")
+    ax.set_ylabel("True Class")
+    ax.set_title("TextCNN Confusion Matrix — Sign Descriptions")
+    plt.tight_layout()
+    fig.savefig(os.path.join(results_dir, "nlp_confusion_matrix.png"),
+                dpi=150)
+    plt.close(fig)
+    print("  NLP confusion matrix saved.")
+
+
+# ==============================================================
+# Inference: classify free-text description
+# ==============================================================
+
+def classify_description(text: str, model, vocab):
+    """
+    Classify a free-text sign description → predicted GTSRB class ID.
+
+    Parameters
+    ----------
+    text : str
+        Free-text sign description.
+    model : TextCNN
+        Trained model.
+    vocab : Vocabulary
+        Trained vocabulary.
+
+    Returns
+    -------
+    predicted_class : int
+    confidence : float
+    description : str
+    """
+    model.eval()
+    encoded = torch.tensor([vocab.encode(text, max_len=20)])
+    with torch.no_grad():
+        logits = model(encoded)
+        probs = torch.softmax(logits, dim=1)
+        pred = logits.argmax(1).item()
+        conf = probs[0, pred].item()
+    return pred, conf, GTSRB_DESCRIPTIONS.get(pred, f"Unknown (class {pred})")
 
 
 # ==============================================================
@@ -302,4 +444,19 @@ if __name__ == "__main__":
     print("\n--- Sign Description Demo ---")
     for cid in [0, 14, 25, 33, 40]:
         print(f"  Class {cid:2d}: {describe_sign(cid)}")
+
+    # Inference demo
+    print("\n--- Free-Text Classification Demo ---")
+    test_queries = [
+        "stop sign must halt",
+        "speed limit ahead fifty",
+        "children crossing school zone",
+        "road construction work ahead",
+        "roundabout circular traffic",
+    ]
+    for q in test_queries:
+        pred, conf, desc = classify_description(q, model, vocab)
+        print(f"  Input: \"{q}\"")
+        print(f"    → Class {pred} ({conf:.2%}): {desc}")
+
     print("\n✓ NLP component complete.")

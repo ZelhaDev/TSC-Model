@@ -19,12 +19,13 @@ cnn:
 
 # ---- Training ----
 training:
-  epochs: 15
-  learning_rate: 0.001
+  epochs: 30
+  learning_rate: 0.0005
   weight_decay: 1.0e-4
-  scheduler_step: 5
-  scheduler_gamma: 0.5
-  early_stopping_patience: 5
+  scheduler: "cosine"          # "step" or "cosine"
+  scheduler_step: 5            # used if scheduler=step
+  scheduler_gamma: 0.5         # used if scheduler=step
+  early_stopping_patience: 7
 
 # ---- SVM Baseline ----
 svm:
@@ -55,6 +56,17 @@ rl:
   step_penalty: -0.2
   sign_bonus: 2.0
   sign_penalty: -5.0
+  num_seeds: 3                 # multi-seed evaluation
+
+# ---- Ablations ----
+ablations:
+  epochs: 10                   # per-ablation training budget
+  augmentation:                # A1: augmentation on vs off
+    variants: [true, false]
+  learning_rate:               # A2: LR comparison
+    variants: [0.001, 0.0005, 0.0001]
+  depth:                       # A3: CNN depth (num blocks)
+    variants: [2, 3, 4]
 
 # ---- Paths ----
 paths:
