@@ -3,9 +3,9 @@ Traffic Sign Classifier — Training Pipeline
 =============================================
 Trains:
   1. SVM baseline on HOG features
-  2. Custom CNN (TrafficSignCNN)
+  2. Custom CNN (TrafficSignCNN) with improved schedule
 
-Logs metrics to experiments/logs/.
+Logs metrics + hyperparameters to experiments/logs/.
 
 Run:
     python src/train.py
@@ -21,7 +21,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 from tqdm import tqdm
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, f1_score, classification_report
@@ -156,36 +156,85 @@ def evaluate(model, loader, criterion, device):
     return running_loss / total, acc, f1
 
 
-def train_cnn(cfg, train_loader, val_loader):
-    """Train the custom CNN and return the best model + training history."""
+def train_cnn(cfg, train_loader, val_loader, num_blocks=3, epochs_override=None,
+              lr_override=None, tag="default"):
+    """
+    Train the custom CNN and return the best model + training history.
+
+    Parameters
+    ----------
+    cfg : dict
+        Full configuration.
+    num_blocks : int
+        Number of residual blocks (2, 3, or 4).
+    epochs_override : int or None
+        If set, overrides cfg epochs.
+    lr_override : float or None
+        If set, overrides cfg learning rate.
+    tag : str
+        Identifier for this training run, used in log filenames.
+    """
     print("\n" + "=" * 60)
-    print("  CNN TRAINING (TrafficSignCNN)")
+    print(f"  CNN TRAINING (TrafficSignCNN — {num_blocks} blocks, tag={tag})")
     print("=" * 60)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"  Device: {device}")
 
     tcfg = cfg["training"]
+    epochs = epochs_override if epochs_override else tcfg["epochs"]
+    lr = lr_override if lr_override else tcfg["learning_rate"]
+
     model = TrafficSignCNN(
         num_classes=cfg["cnn"]["num_classes"],
         dropout=cfg["cnn"]["dropout"],
+        num_blocks=num_blocks,
     ).to(device)
 
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"  Parameters: {total_params:,}")
+
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=tcfg["learning_rate"],
+    optimizer = optim.Adam(model.parameters(), lr=lr,
                            weight_decay=tcfg["weight_decay"])
-    scheduler = StepLR(optimizer, step_size=tcfg["scheduler_step"],
-                       gamma=tcfg["scheduler_gamma"])
+
+    # Scheduler
+    sched_type = tcfg.get("scheduler", "step")
+    if sched_type == "cosine":
+        scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
+    else:
+        scheduler = StepLR(optimizer, step_size=tcfg["scheduler_step"],
+                           gamma=tcfg["scheduler_gamma"])
 
     best_val_f1 = 0.0
     patience_counter = 0
     history = {"train_loss": [], "train_acc": [],
                "val_loss": [], "val_acc": [], "val_f1": []}
 
-    ckpt_path = os.path.join(cfg["paths"]["checkpoints"], "best_model.pth")
+    ckpt_path = os.path.join(cfg["paths"]["checkpoints"], f"best_model_{tag}.pth")
     os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
 
-    for epoch in range(1, tcfg["epochs"] + 1):
+    # Log hyperparameters
+    hparams = {
+        "tag": tag,
+        "num_blocks": num_blocks,
+        "epochs": epochs,
+        "learning_rate": lr,
+        "weight_decay": tcfg["weight_decay"],
+        "scheduler": sched_type,
+        "dropout": cfg["cnn"]["dropout"],
+        "batch_size": cfg["data"]["batch_size"],
+        "image_size": cfg["data"]["image_size"],
+        "total_params": total_params,
+        "device": str(device),
+    }
+    hparam_path = os.path.join(cfg["paths"]["logs"], f"hparams_{tag}.json")
+    with open(hparam_path, "w") as f:
+        json.dump(hparams, f, indent=2)
+
+    t_start = time.time()
+
+    for epoch in range(1, epochs + 1):
         t0 = time.time()
         train_loss, train_acc = train_one_epoch(
             model, train_loader, criterion, optimizer, device)
@@ -200,7 +249,7 @@ def train_cnn(cfg, train_loader, val_loader):
         history["val_f1"].append(round(val_f1, 4))
 
         elapsed = time.time() - t0
-        print(f"  Epoch {epoch:2d}/{tcfg['epochs']}  "
+        print(f"  Epoch {epoch:2d}/{epochs}  "
               f"train_loss={train_loss:.4f}  train_acc={train_acc:.4f}  "
               f"val_loss={val_loss:.4f}  val_acc={val_acc:.4f}  "
               f"val_f1={val_f1:.4f}  ({elapsed:.1f}s)")
@@ -217,17 +266,33 @@ def train_cnn(cfg, train_loader, val_loader):
                       f"(patience={tcfg['early_stopping_patience']})")
                 break
 
+    total_time = time.time() - t_start
+
     # Save training history
-    log_path = os.path.join(cfg["paths"]["logs"], "training_metrics.json")
+    log_path = os.path.join(cfg["paths"]["logs"], f"training_metrics_{tag}.json")
     with open(log_path, "w") as f:
         json.dump(history, f, indent=2)
+
+    # Also save as the canonical training_metrics.json for default runs
+    if tag == "default":
+        canonical_path = os.path.join(cfg["paths"]["logs"], "training_metrics.json")
+        with open(canonical_path, "w") as f:
+            json.dump(history, f, indent=2)
+
     print(f"  Training metrics saved → {log_path}")
     print(f"  Best model saved       → {ckpt_path}")
     print(f"  Best val macro-F1      : {best_val_f1:.4f}")
+    print(f"  Total training time    : {total_time:.1f}s")
 
     # Load best weights
     model.load_state_dict(torch.load(ckpt_path, map_location=device,
                                      weights_only=True))
+
+    # Also copy as best_model.pth for default runs
+    if tag == "default":
+        canonical_ckpt = os.path.join(cfg["paths"]["checkpoints"], "best_model.pth")
+        torch.save(model.state_dict(), canonical_ckpt)
+
     return model, history
 
 
@@ -245,8 +310,8 @@ def main():
     # 1) SVM baseline
     train_svm(cfg, train_loader, val_loader, test_loader)
 
-    # 2) CNN training
-    model, history = train_cnn(cfg, train_loader, val_loader)
+    # 2) CNN training (default config)
+    model, history = train_cnn(cfg, train_loader, val_loader, tag="default")
 
     print("\n✓ Training complete. Run src/eval.py for full test evaluation.")
 
