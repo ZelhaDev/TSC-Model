@@ -22,8 +22,8 @@ echo "=============================================="
 echo " Traffic Sign Classifier — Reproduce Pipeline"
 echo "=============================================="
 
-# 0. Download datasets interactively
-echo ">> Downloading datasets from Kaggle..."
+# 0. Download GTSRB dataset via torchvision (skipped if already present)
+echo ">> [0/7] Downloading GTSRB dataset (torchvision) ..."
 python data/get_data.py
 
 # 1. Install dependencies
