@@ -1,0 +1,31 @@
+# Data files (too many images)
+data/
+experiments/
+
+# Model checkpoints (can be retrained)
+checkpoints/*.pth
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+env/
+.venv
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
