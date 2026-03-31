@@ -8,7 +8,7 @@ Ma Louella M. Salenga
 Submitted by:
 Half_Exception:
 Ahmad, Saeed (Data Ethics lead)
-Aveena, Stephen (Project lead/Integration)
+Avena, Stephen (Project lead/Integration)
 Predilla, Stanley (Evaluation and MLOps Lead)
 Siron, Carlo (Modeling lead)
 
