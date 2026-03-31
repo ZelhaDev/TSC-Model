@@ -1,47 +1,54 @@
+"""
+Traffic Sign Classifier — Dataset Download
+===========================================
+Downloads the German Traffic Sign Recognition Benchmark (GTSRB)
+via torchvision. No Kaggle account or API key required.
+
+Both the training split (~39,209 images) and test split (12,630 images)
+are downloaded to the path specified in configs/config.yaml (data.root).
+
+Run:
+    python data/get_data.py
+
+The download is skipped automatically if the data already exists.
+"""
+
 import os
-from kaggle.api.kaggle_api_extended import KaggleApi
-import getpass
+import sys
 
-# Where to store raw datasets
-RAW_DIR = "data/raw"
+# Allow running from either the project root or the data/ directory
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# List of Kaggle datasets to download
-DATASETS = [
-    "ahemateja19bec1025/traffic-sign-dataset-classification",
-    "valentynsichkar/traffic-signs-preprocessed",
-    "tuanai/traffic-signs-dataset"
-]
+from torchvision import datasets
 
-def download_dataset(dataset, api):
-    """Download and unzip a dataset if not already present."""
-    dataset_name = dataset.split("/")[-1]
-    path = os.path.join(RAW_DIR, dataset_name)
 
-    if os.path.exists(path) and os.listdir(path):
-        print(f"{dataset_name} already exists, skipping download...")
-        return
+def download_gtsrb(root: str = "data") -> None:
+    """Download GTSRB train and test splits to `root` using torchvision."""
+    print("=" * 55)
+    print("  GTSRB Download")
+    print("=" * 55)
 
-    os.makedirs(path, exist_ok=True)
+    for split in ("train", "test"):
+        print(f"\n  Checking {split} split ...")
+        dataset = datasets.GTSRB(root=root, split=split, download=True)
+        print(f"  ✓ {split.capitalize()} split ready — {len(dataset):,} images")
 
-    print(f"Downloading {dataset}...")
-    api.dataset_download_files(dataset, path=path, unzip=True)
-    print(f"✅ Done: {path}\n")
+    print("\n  Download complete.")
+    print(f"  Data stored in: {os.path.abspath(root)}/gtsrb/")
+    print("\n  Run the full pipeline with:")
+    print("    bash run.sh")
+
 
 if __name__ == "__main__":
-    print("=== Kaggle API Setup ===")
-    username = input("Enter your Kaggle username: ").strip()
-    key = getpass.getpass("Enter your Kaggle API key (hidden): ").strip()
+    # Read root from config if available, otherwise default to "data"
+    root = "data"
+    try:
+        import yaml
+        config_path = os.path.join(os.path.dirname(__file__), "..", "configs", "config.yaml")
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f)
+        root = cfg.get("data", {}).get("root", "data")
+    except Exception:
+        pass  # fall back to default
 
-    # Temporarily set environment variables
-    os.environ['KAGGLE_USERNAME'] = username
-    os.environ['KAGGLE_KEY'] = key
-
-    # Authenticate Kaggle API
-    api = KaggleApi()
-    api.authenticate()
-
-    # Download all datasets
-    for ds in DATASETS:
-        download_dataset(ds, api)
-
-    print("🎉 All datasets are ready in data/raw/!")
+    download_gtsrb(root)
