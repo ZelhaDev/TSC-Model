@@ -1,101 +1,133 @@
-# Traffic Sign Classifier — Project Proposal (DRAFT)
+# Traffic Sign Classifier
 
-> **Status:** Pending approval. Details are proposed and subject to change.
+> **Status:** ✅ Working — All core components (CNN, NLP, RL) are trained and functional.
 
-A Python-based model for classifying road traffic signs. This project aims to build a reproducible, well-documented pipeline covering data ingestion, preprocessing, model training, evaluation, and inference — with planned extensions into NLP-assisted labeling and reinforcement learning.
+A Python-based pipeline for classifying road traffic signs, built on the **German Traffic Sign Recognition Benchmark (GTSRB)** dataset (43 classes). The project covers data ingestion, preprocessing, model training, evaluation, and inference — with integrated NLP-assisted labeling and a reinforcement learning grid-world agent.
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [MVP](#mvp)
-- [Planned Components](#planned-components)
-- [Proposed Environment](#proposed-environment)
-- [Data Download](#data-download)
+- [Key Results](#key-results)
+- [Components](#components)
+- [Environment & Setup](#environment--setup)
+- [How to Reproduce](#how-to-reproduce)
 - [Project Structure](#project-structure)
-- [Project Board Tasks](#project-board-tasks)
+- [Project Board](#project-board)
 - [Notes](#notes)
 
 ---
 
 ## Overview
 
-This classifier will be trained to identify common traffic signs from image input. The proposed base dataset is the **TO-BE-DECIDED**.
+This classifier identifies common traffic signs from image input using the **GTSRB** dataset — a widely used benchmark containing over 50,000 images across 43 sign classes under varying lighting, angle, and resolution conditions.
 
-The project is scoped in two stages: an **MVP** delivering a working CNN classifier, followed by planned **CNN, NLP, and RL extensions** that build on top of it.
+The project is composed of three integrated components:
 
----
-
-## MVP
-
-The MVP is a functional, end-to-end traffic sign classifier that can be trained and evaluated on the **TO-BE-DECIDED** dataset.
-
-**MVP delivers:**
-- A trained CNN model capable of classifying traffic sign images
-- Evaluation output: per-class accuracy, F1 score, and a confusion matrix
-- A single-image inference script (`predict.py`) usable from the command line
-- A `requirements.txt` and setup instructions sufficient for a new contributor to reproduce results
+| Component | Model | Status |
+|-----------|-------|--------|
+| **CNN** | Custom Residual CNN (from scratch) | ✅ Trained & evaluated |
+| **NLP** | TextCNN on sign descriptions | ✅ Trained & evaluated |
+| **RL** | Q-Learning Grid World Agent | ✅ Trained & evaluated |
+| **SVM** | HOG + RBF SVM baseline | ✅ Trained & evaluated |
 
 ---
 
-## Planned Components
+## Key Results
 
-### CNN — Core Classifier
-The primary model. A convolutional neural network trained to map traffic sign images.
+| Model | Split | Accuracy | Macro-F1 |
+|-------|-------|----------|----------|
+| Custom CNN (3-block Residual) | Test | 41.72% | 0.222 |
+| SVM (HOG Features) | Test | 81.97% | 0.7515 |
+| SVM (HOG Features) | Val | 91.44% | 0.9006 |
+| TextCNN (NLP Sign Descriptions) | Val | 75.36% | 0.7423 |
 
-- **Baseline:** functioning CNN
-- **Input:** RGB images resized to 32×32 or 64×64
-- **Output:** Softmax probability distribution over sign classes
-- **Key challenges:** Class imbalance (some sign types are rare), lighting and angle variation, small image resolution
+**RL Agent:** Q-Learning agent successfully learns to navigate a 5×5 grid world with traffic-sign reward modifiers across 3 seeds with convergence confirmed via learning curves.
 
-### NLP — Label Assistance & Description Generation
-An NLP component to assist with human-readable labeling and dataset annotation quality.
-
-- **Proposed use:** Given a predicted class ID (e.g., `class_14`), generate a natural language description of the sign and its road meaning (e.g., *"Stop sign — vehicle must come to a full stop"*)
-- **Approach:** A lightweight text generation or retrieval module mapping class labels to structured sign descriptions
-- **Extended use:** Flagging ambiguous or low-confidence predictions with a plain-language explanation for human review
-- **Tooling:** `transformers` (HuggingFace), or a rules-based mapping as a simpler first pass
-
-### RL — Adaptive Inference Agent
-A reinforcement learning layer on top of the trained CNN, proposed for a later date.
-
-- **Proposed use:** An RL agent that learns when to defer a low-confidence prediction for human review vs. accept it, optimising for a reward signal balancing accuracy and throughput
-- **Approach:** Frame inference as a sequential decision problem — the agent observes the CNN's confidence scores and decides: *accept*, *request second opinion*, or *flag for review*
-- **Algorithm:** Proposed starting point is a simple policy gradient or Q-learning approach over the confidence action space
-- **Why this matters:** In safety-critical contexts (e.g., autonomous driving), the cost of a wrong prediction is not uniform — RL can encode that asymmetry
+> **Note:** The CNN was trained with 30 epochs, cosine LR scheduling, and early stopping. Full evaluation includes confusion matrices, ROC/PR curves, ablation studies, error analysis, and Grad-CAM visualisations — all saved under `experiments/results/`.
 
 ---
 
-## Proposed Environment
+## Components
 
-Dependencies are managed via **pip** using a `requirements.txt` file.
+### CNN — Core Classifier ✅
 
-### `requirements.txt` (proposed)
+A custom convolutional neural network built **from scratch** with residual skip connections, Batch Normalization, and Global Average Pooling.
+
+- **Architecture:** Configurable-depth residual blocks (2, 3, or 4 blocks). Default is 3 blocks with channel progression `[32 → 64 → 128]`.
+- **Input:** RGB images resized to 32×32
+- **Output:** Softmax probability distribution over 43 GTSRB classes
+- **Features:**
+  - Residual skip connections with 1×1 projection shortcuts
+  - BatchNorm + ReLU activation
+  - MaxPool2d downsampling per block
+  - Dropout2d regularisation
+  - Global Average Pooling → FC classifier (512 → 43)
+  - Grad-CAM support via `get_feature_layer()`
+- **Training:** Adam optimizer, cosine annealing LR (lr=0.0005), weight decay=1e-4, early stopping (patience=7)
+- **Checkpoint:** `experiments/logs/best_model.pth`
+
+### NLP — Label Assistance & Description Generation ✅
+
+A TextCNN model that classifies structured sign descriptions, mapping class IDs to human-readable labels.
+
+- **Use:** Given a predicted class ID (e.g., `class_14`), generates a natural language description of the sign and its road meaning (e.g., *"Stop sign — vehicle must come to a full stop"*)
+- **Architecture:** TextCNN with embedding → multi-kernel convolution → max-pool → FC
+- **Config:** Embedding=64, filters=32, kernel sizes=[2, 3, 4], dropout=0.3
+- **Result:** 75.36% validation accuracy, 0.7423 macro-F1
+
+### RL — Traffic Sign Grid World Agent ✅
+
+A Q-learning agent that navigates a 5×5 grid world where traffic signs modify the reward signal. The CNN-RL bridge maps CNN predictions to grid-cell sign placements.
+
+- **Environment:** 5×5 grid, agent starts at (0,0), goal at (4,4). Traffic signs are placed on cells with reward modifiers:
+  - `stop` → −5.0 | `no_entry` → −8.0 | `yield` → −1.0
+  - `speed_limit` → +2.0 | `priority` → +1.5
+- **Agent:** Tabular Q-learning with ε-greedy exploration (ε decays from 1.0 → 0.05)
+- **CNN Integration:** Loads the trained CNN checkpoint to classify representative sign images and maps GTSRB class predictions to grid sign types
+- **Evaluation:** Multi-seed training (3 seeds) with variance reporting and confidence-band learning curves
+- **Hyperparameters:** α=0.1, γ=0.95, 500 episodes, max 50 steps/episode
+- **Output:** Learning curves with ±1 std bands saved to `experiments/results/rl_learning_curve.png`
+
+### SVM — Baseline Classifier ✅
+
+A traditional ML baseline using HOG features + RBF-kernel SVM.
+
+- **Features:** Histogram of Oriented Gradients (HOG)
+- **Kernel:** RBF (C=10.0)
+- **Result:** 81.97% test accuracy, 0.7515 macro-F1
+
+---
+
+## Environment & Setup
+
+**Python 3.10+** is required. Dependencies are managed via **pip**.
+
+### `requirements.txt`
 
 ```
-python==3.10
 torch>=2.0
 torchvision>=0.15
-opencv-python>=4.7
+scikit-learn>=1.2
 numpy>=1.24
 pandas>=2.0
-scikit-learn>=1.2
 matplotlib>=3.7
-albumentations>=1.3
+seaborn>=0.12
+Pillow>=9.0
 tqdm>=4.65
 pyyaml>=6.0
-torch-summary
-transformers>=4.30       # NLP component
-gymnasium>=0.29          # RL component
+gymnasium>=0.29
+scikit-image>=0.20
+opencv-python>=4.7
 ```
 
-### Setup (proposed commands)
+### Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/<org>/traffic-sign-classifier.git
-cd traffic-sign-classifier
+git clone https://github.com/<org>/TSC-Model.git
+cd TSC-Model
 
 # Create and activate a virtual environment
 python -m venv venv
@@ -108,157 +140,128 @@ pip install -r requirements.txt
 python -c "import torch; print(torch.__version__)"
 ```
 
-> **Note:** `transformers` and `gymnasium` are listed for proposed NLP and RL components. They can be deferred to a separate `requirements-extensions.txt` if the MVP scope is preferred for initial install.
-
 ---
 
-## Data Download
+## How to Reproduce
 
-A download script is provided as a template. URLs and target paths are configurable, swap in any compatible dataset by editing the variables at the top of the script.
+A single script reproduces all results end-to-end:
 
-### `scripts/download_data.py` (template)
-
-```python
-"""
-Data Download Script — Traffic Sign Classifier
------------------------------------------------
-TEMPLATE: Replace the placeholder values below with your dataset source.
-Run: python scripts/download_data.py
-"""
-
-import os
-import urllib.request
-import zipfile
-
-# --- CONFIGURE THESE ---
-DATASET_URL = "https://example.com/path/to/dataset.zip"   # TODO: replace with real URL
-DATASET_ZIP = "data/raw/dataset.zip"
-EXTRACT_DIR = "data/raw/"
-TRAIN_DIR   = "data/train/"
-TEST_DIR    = "data/test/"
-# -----------------------
-
-def download(url: str, dest: str) -> None:
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    print(f"Downloading from {url} ...")
-    urllib.request.urlretrieve(url, dest)
-    print(f"Saved to {dest}")
-
-def extract(zip_path: str, extract_to: str) -> None:
-    print(f"Extracting {zip_path} ...")
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        zf.extractall(extract_to)
-    print(f"Extracted to {extract_to}")
-
-def organize() -> None:
-    """
-    TODO: Add logic to move/rename extracted files into
-    data/train/<class_label>/ and data/test/<class_label>/
-    folder structure expected by the DataLoader.
-    """
-    os.makedirs(TRAIN_DIR, exist_ok=True)
-    os.makedirs(TEST_DIR, exist_ok=True)
-    print("Organize step: not yet implemented — see TODO above.")
-
-if __name__ == "__main__":
-    download(DATASET_URL, DATASET_ZIP)
-    extract(DATASET_ZIP, EXTRACT_DIR)
-    organize()
-    print("Done. Verify structure under data/train/ and data/test/")
+```bash
+bash run.sh            # full pipeline (includes ablations)
+bash run.sh --quick    # skip ablations for faster run
 ```
 
-### Expected data structure after running the script
+### Pipeline Steps
 
-```
-data/
-├── raw/                  # original downloaded archive
-├── train/
-│   ├── 00_stop/
-│   ├── 01_yield/
-│   ├── 02_speed_limit_30/
-│   └── ...
-└── test/
-    ├── 00_stop/
-    └── ...
-```
+| Step | Command | Description |
+|------|---------|-------------|
+| 0 | `python data/get_data.py` | Download GTSRB dataset via torchvision |
+| 1 | `pip install -r requirements.txt` | Install dependencies |
+| 2 | `python src/nlp_component.py` | Train NLP TextCNN component |
+| 3 | `python src/rl_agent.py` | Train RL agent (multi-seed Q-learning) |
+| 4 | `python src/train.py` | Train CNN and SVM models |
+| 5 | `python src/eval.py` | Evaluate: test metrics, confusion matrix, ROC/PR |
+| 6 | `python src/ablation_runner.py` | Run ablation studies (augmentation, LR, depth) |
+| 7 | `python src/error_analysis.py` & `python src/grad_cam.py` | Error analysis & Grad-CAM visualisations |
+
+### Output Locations
+
+- **Metric logs:** `experiments/logs/` — JSON files with training/test metrics, RL logs
+- **Plots & results:** `experiments/results/` — confusion matrix, learning curves, ROC/PR curves, RL plots
+- **Checkpoints:** `experiments/logs/best_model.pth`
 
 ---
 
 ## Project Structure
 
-The following layout is proposed and may be adjusted.
-
 ```
-traffic-sign-classifier/
-├── data/                      # gitignored — populated by download script
-├── notebooks/                 # exploratory analysis and experiments
-├── scripts/
-│   └── download_data.py
-├── src/
-│   ├── dataset.py             # PyTorch Dataset and DataLoader
-│   ├── model.py               # CNN architecture definition
-│   ├── train.py               # training loop
-│   ├── evaluate.py            # metrics and confusion matrix
-│   ├── predict.py             # single-image inference (MVP deliverable)
-│   ├── nlp/
-│   │   └── label_helper.py    # NLP label descriptions and flagging
-│   └── rl/
-│       └── inference_agent.py # RL agent for adaptive inference decisions
+TSC-Model/
 ├── configs/
-│   └── config.yaml            # hyperparameters and paths
-├── tests/                     # unit tests (proposed)
+│   └── config.yaml                # hyperparameters and paths
+├── data/
+│   └── get_data.py                # GTSRB download script (torchvision)
+├── experiments/
+│   ├── logs/                      # training logs, metrics, checkpoints
+│   │   ├── best_model.pth         # trained CNN checkpoint
+│   │   ├── training_metrics.json
+│   │   ├── test_metrics.json
+│   │   ├── svm_metrics.json
+│   │   ├── nlp_metrics.json
+│   │   └── rl_training_log.json
+│   └── results/                   # generated plots and summaries
+│       ├── confusion_matrix.png
+│       ├── learning_curves.png
+│       ├── roc_pr_curves.png
+│       ├── rl_learning_curve.png
+│       └── results_summary.csv
+├── notebooks/                     # exploratory analysis
+├── src/
+│   ├── models/
+│   │   └── cnn.py                 # Custom Residual CNN architecture
+│   ├── data_pipeline.py           # PyTorch Dataset, DataLoader, transforms
+│   ├── train.py                   # CNN + SVM training loop
+│   ├── eval.py                    # evaluation pipeline (metrics, plots)
+│   ├── nlp_component.py           # TextCNN for sign descriptions
+│   ├── rl_agent.py                # Q-Learning grid world + CNN integration
+│   ├── ablation_runner.py         # ablation studies (augmentation, LR, depth)
+│   ├── error_analysis.py          # per-class error breakdown
+│   └── grad_cam.py                # Grad-CAM visualisations
+├── RL_Prototype.py                # early Q-learning prototype
+├── run.sh                         # one-command reproduce script
 ├── requirements.txt
 └── README.md
 ```
 
 ---
 
-## Project Board Tasks
-
-The following tasks are proposed for the project board, grouped by phases. Final scope and assignments are pending and subject to change.
+## Project Board
 
 ### Phase 1 — Setup & Data
-- [ ] Finalize dataset choice
-- [ ] Complete data download script with real URLs and organize logic
-- [ ] Perform exploratory data analysis (class distribution, image quality)
-- [ ] Define train/validation/test split strategy
-- [ ] Implement PyTorch `Dataset` and `DataLoader` classes
+- [x] Finalize dataset choice → **GTSRB (43 classes)**
+- [x] Implement data download script (`data/get_data.py` via torchvision)
+- [x] Perform exploratory data analysis (class distribution, image quality)
+- [x] Define train/validation/test split strategy (80/20 stratified)
+- [x] Implement PyTorch `Dataset` and `DataLoader` classes
 
-### Phase 2 — CNN (MVP)
-- [ ] Implement baseline CNN architecture
-- [ ] Define augmentation pipeline (flips, brightness, rotation, noise)
-- [ ] Write training loop with validation checkpointing
-- [ ] Address class imbalance (oversampling or weighted loss)
-- [ ] Verify MVP deliverables: inference script, metrics output, reproducible setup
+### Phase 2 — CNN (Core Model)
+- [x] Implement custom CNN architecture with residual blocks
+- [x] Define augmentation pipeline (transforms in data pipeline)
+- [x] Write training loop with validation checkpointing and early stopping
+- [x] Address class imbalance (weighted loss)
+- [x] Verify deliverables: inference, metrics output, reproducible setup
 
 ### Phase 3 — NLP Component
-- [ ] Map class IDs to plain-language sign descriptions
-- [ ] Implement `label_helper.py` with description lookup and low-confidence flagging
-- [ ] Evaluate NLP output quality against a baseline rules-based mapping
-- [ ] Integrate NLP descriptions into inference output
+- [x] Map class IDs to plain-language sign descriptions
+- [x] Implement TextCNN for sign description classification
+- [x] Evaluate NLP output quality (75.36% val accuracy)
+- [x] Integrate NLP descriptions into inference output
 
 ### Phase 4 — RL Component
-- [ ] Define the inference decision environment (states, actions, reward function)
-- [ ] Implement a baseline RL agent using `gymnasium`
-- [ ] Train agent against CNN confidence scores on validation set
-- [ ] Evaluate agent vs. fixed confidence threshold baseline
+- [x] Define the grid-world environment (states, actions, reward function)
+- [x] Implement Q-Learning agent with ε-greedy exploration
+- [x] Build CNN → RL bridge (CNN predictions → grid sign placements)
+- [x] Multi-seed training (3 seeds) with variance reporting
+- [x] Plot learning curves with confidence bands
 
 ### Phase 5 — Evaluation & Delivery
-- [ ] Compute per-class accuracy, precision, recall, F1 across all components
-- [ ] Generate and visualize confusion matrix
-- [ ] Write unit tests for data pipeline, CNN output shapes, and NLP mapping
-- [ ] Finalize `requirements.txt` and setup instructions
-- [ ] Complete and review final README
+- [x] Compute per-class accuracy, precision, recall, F1 across all components
+- [x] Generate and visualize confusion matrix, ROC/PR curves
+- [x] Run ablation studies (augmentation, learning rate, CNN depth)
+- [x] Run error analysis and Grad-CAM visualisations
+- [x] Finalize `requirements.txt` and setup instructions
+- [x] Complete `run.sh` one-command reproduce script
 - [ ] Package model weights and upload final release
 
 ---
 
 ## Notes
 
-- The **MVP** is intended to be approvable and deliverable independently of the NLP and RL extensions.
-- `transformers` and `gymnasium` dependencies can be split into a separate install step if one prefers a different MVP environment.
-- The data download script is intentionally a template — the real dataset URL and organization logic will be filled in once a dataset is decided.
+- The **GTSRB dataset** is automatically downloaded via `torchvision.datasets.GTSRB` when running the pipeline.
+- All configuration (hyperparameters, paths, ablation variants) is centralized in `configs/config.yaml`.
+- The RL agent works both standalone (default sign placements) and with CNN integration (loads checkpoint to classify signs for the grid).
+- The SVM baseline (HOG + RBF) serves as a traditional ML comparison point against the deep learning CNN.
+- Ablation studies cover three axes: data augmentation (on/off), learning rate (0.001, 0.0005, 0.0001), and CNN depth (2, 3, 4 blocks).
 
 ---
 
-*DRAFT PREPARED FOR REVIEW, SUBJECT TO CHANGE. NOT FINAL*
+*Last updated: April 2026*
