@@ -263,5 +263,3 @@ TSC-Model/
 - Ablation studies cover three axes: data augmentation (on/off), learning rate (0.001, 0.0005, 0.0001), and CNN depth (2, 3, 4 blocks).
 
 ---
-
-*Last updated: April 2026*
