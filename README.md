@@ -29,15 +29,68 @@ The project is scoped in two stages: an **MVP** delivering a working CNN classif
 
 ## MVP
 
-The MVP is a functional, end-to-end traffic sign classifier that can be trained and evaluated on the **TO-BE-DECIDED** dataset.
+## Minimum Viable Product (MVP)
 
-**MVP delivers:**
-- A trained CNN model capable of classifying traffic sign images
-- Evaluation output: per-class accuracy, F1 score, and a confusion matrix
-- A single-image inference script (`predict.py`) usable from the command line
-- A `requirements.txt` and setup instructions sufficient for a new contributor to reproduce results
+The MVP is a fully functional, end-to-end Traffic Sign Classification system that can be trained, evaluated, and used for inference through a reproducible pipeline.
 
 ---
+
+### Dataset
+
+The system uses the German Traffic Sign Recognition Benchmark (GTSRB), a widely used dataset for traffic sign classification.
+
+- ~39,000 training images  
+- ~12,000 test images  
+- 43 traffic sign classes  
+
+The dataset is automatically downloaded using `torchvision` via `data/get_data.py`, requiring no external API keys or manual setup. Data is stored locally in the `data/` directory.
+
+---
+
+### MVP Capabilities
+
+#### 1. CNN-Based Traffic Sign Classifier
+- A custom Convolutional Neural Network (`TrafficSignCNN`) implemented in PyTorch  
+- Trained on GTSRB for multi-class traffic sign classification  
+- Supports configurable architecture and hyperparameters via `configs/config.yaml`  
+
+---
+
+#### 2. Baseline Model (SVM + HOG)
+- Traditional machine learning baseline using:
+  - Histogram of Oriented Gradients (HOG)
+  - Support Vector Machine (SVM)  
+- Enables comparison between classical and deep learning approaches  
+
+---
+
+#### 3. Evaluation and Metrics
+- Accuracy and Macro F1-score  
+- Per-class classification performance  
+- Confusion matrix visualization  
+- Metrics and logs saved to:
+  - `experiments/logs/`
+  - `experiments/results/`  
+
+---
+
+#### 4. Reinforcement Learning Component
+- A Q-learning–based RL agent (`rl_agent.py`)  
+- Simulates decision-making in a grid environment using reward-based learning  
+- Includes configurable parameters such as exploration rate, reward shaping, and multi-seed evaluation  
+
+---
+
+#### 5. NLP Component
+- A lightweight NLP module (`nlp_component.py`)  
+- Demonstrates text-based processing within the system  
+- Serves as an auxiliary component to satisfy NLP integration requirements  
+
+---
+
+#### 6. Single Image Inference
+- A command-line script (`predict.py`) for predicting the class of a single traffic sign image  
+
 
 ## Planned Components
 
